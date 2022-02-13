@@ -269,13 +269,42 @@ public class SpringApplication {
 		Assert.notNull(primarySources, "PrimarySources must not be null");
 		this.primarySources = new LinkedHashSet<>(Arrays.asList(primarySources));
 		this.webApplicationType = WebApplicationType.deduceFromClasspath();
+
+		// Find the Application Context Initializer from META-INF/spring.factories and set it to initializers.
+		// By default, the initialize method finds the classes whose keys are ApplicationContextInitializer
+		// from the spring. factories file:
+
+		// org.springframework.boot.context.ConfigurationWarningsApplicationContextInitializer
+		// org.springframework.boot.context.ContextIdApplicationContextInitializer
+		// org.springframework.boot.context.config.DelegatingApplicationContextInitializer
+		// org.springframework.boot.rsocket.context.RSocketPortInfoApplicationContextInitializer
+		// org.springframework.boot.web.context.ServerPortInfoApplicationContextInitializer
 		setInitializers((Collection) getSpringFactoriesInstances(ApplicationContextInitializer.class));
+
+		// Find the Application Listener from spring.factories and instantiate it into the listeners property
+		// of Spring Application. This process is to find all the application event listeners.
+
+		// when the key is ApplicationListener:
+		// org.springframework.boot.ClearCachesApplicationListener,\
+		// org.springframework.boot.builder.ParentContextCloserApplicationListener,\
+		// org.springframework.boot.cloud.CloudFoundryVcapEnvironmentPostProcessor,\
+		// org.springframework.boot.context.FileEncodingApplicationListener,\
+		// org.springframework.boot.context.config.AnsiOutputApplicationListener,\
+		// org.springframework.boot.context.config.ConfigFileApplicationListener,\
+		// org.springframework.boot.context.config.DelegatingApplicationListener,\
+		// org.springframework.boot.context.logging.ClasspathLoggingApplicationListener,\
+		// org.springframework.boot.context.logging.LoggingApplicationListener,\
+		// org.springframework.boot.liquibase.LiquibaseServiceLocatorApplicationListener
 		setListeners((Collection) getSpringFactoriesInstances(ApplicationListener.class));
+
+		// find out application main class
 		this.mainApplicationClass = deduceMainApplicationClass();
 	}
 
 	private Class<?> deduceMainApplicationClass() {
 		try {
+			// a stack trace is a representation of a call stack at a certain point in time,
+			// with each element representing a method invocation
 			StackTraceElement[] stackTrace = new RuntimeException().getStackTrace();
 			for (StackTraceElement stackTraceElement : stackTrace) {
 				if ("main".equals(stackTraceElement.getMethodName())) {
@@ -297,17 +326,29 @@ public class SpringApplication {
 	 */
 	public ConfigurableApplicationContext run(String... args) {
 		StopWatch stopWatch = new StopWatch();
-		stopWatch.start();
+		stopWatch.start(); // record start time
 		ConfigurableApplicationContext context = null;
 		configureHeadlessProperty();
+
+		// Get Spring Application RunListeners with only one Event Publishing RunListener inside
 		SpringApplicationRunListeners listeners = getRunListeners(args);
+
+		// Encapsulate Spring Application Event events and broadcast them to listeners in Spring Application
+		// to start listening
 		listeners.starting();
 		try {
+			// Construct an application parameter holder class
 			ApplicationArguments applicationArguments = new DefaultApplicationArguments(args);
+
+			// Load Configuration Environment
 			ConfigurableEnvironment environment = prepareEnvironment(listeners, applicationArguments);
 			configureIgnoreBeanInfo(environment);
 			Banner printedBanner = printBanner(environment);
+
+			// Create Spring containers (using BeanUtils.instantiateClass)
 			context = createApplicationContext();
+
+			// Setting up container configuration environment, monitoring, etc.
 			prepareContext(context, environment, listeners, applicationArguments, printedBanner);
 			refreshContext(context);
 			afterRefresh(context, applicationArguments);
@@ -330,6 +371,8 @@ public class SpringApplication {
 			handleRunFailure(context, ex, null);
 			throw new IllegalStateException(ex);
 		}
+
+		// return spring container
 		return context;
 	}
 
@@ -403,6 +446,7 @@ public class SpringApplication {
 	}
 
 	private void configureHeadlessProperty() {
+		// setting up headless mode, useful for accessing some Java graphics features
 		System.setProperty(SYSTEM_PROPERTY_JAVA_AWT_HEADLESS,
 				System.getProperty(SYSTEM_PROPERTY_JAVA_AWT_HEADLESS, Boolean.toString(this.headless)));
 	}
@@ -414,6 +458,7 @@ public class SpringApplication {
 	}
 
 	private <T> Collection<T> getSpringFactoriesInstances(Class<T> type) {
+		// example: getSpringFactoriesInstances(ApplicationListener.class, new Class<?>[] {});
 		return getSpringFactoriesInstances(type, new Class<?>[] {});
 	}
 
@@ -421,7 +466,11 @@ public class SpringApplication {
 		ClassLoader classLoader = getClassLoader();
 		// Use names and ensure unique to protect against duplicates
 		Set<String> names = new LinkedHashSet<>(SpringFactoriesLoader.loadFactoryNames(type, classLoader));
+
+		// Use BeanUtils.instantiateClass to instantiate beans
 		List<T> instances = createSpringFactoriesInstances(type, parameterTypes, classLoader, args, names);
+
+		// sort class which implements Ordered
 		AnnotationAwareOrderComparator.sort(instances);
 		return instances;
 	}
@@ -523,6 +572,11 @@ public class SpringApplication {
 	}
 
 	private void configureIgnoreBeanInfo(ConfigurableEnvironment environment) {
+		// "spring.beaninfo.ignore", with a value of "true" means skipping the search for BeanInfo classes
+		// (typically for scenarios where no such classes are being defined for beans in the application
+		// in the first place).
+		// Java Introspector: The Introspector class provides a standard way for tools to learn about the properties,
+		// events, and methods supported by a target Java Bean.
 		if (System.getProperty(CachedIntrospectionResults.IGNORE_BEANINFO_PROPERTY_NAME) == null) {
 			Boolean ignore = environment.getProperty("spring.beaninfo.ignore", Boolean.class, Boolean.TRUE);
 			System.setProperty(CachedIntrospectionResults.IGNORE_BEANINFO_PROPERTY_NAME, ignore.toString());
